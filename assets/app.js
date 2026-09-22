@@ -2650,6 +2650,7 @@
   // ---------------------------------------------------------------- 렌더 · 라우팅
   const VIEWS = {
     scores: renderScores, diagnose: renderDiagnose, target: renderTarget, rules: renderRules, about: renderAbout,
+    extra: () => [globalThis.JR_EXTRA ? globalThis.JR_EXTRA.panel({scores:{...state.scores},data:DATA}) : banner('추가 기능을 불러오지 못했습니다.', 'criticalWeak')],
   };
 
   function renderPanel({ keepFocus } = {}) {
@@ -2808,3 +2809,4 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
   else start();
 })();
+

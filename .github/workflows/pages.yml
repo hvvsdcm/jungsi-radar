@@ -47,8 +47,14 @@ jobs:
           echo "::error::저장소 Settings → Pages → Source 를 'GitHub Actions' 로 한 번 켜 주세요."
           echo "워크플로 토큰에는 Pages 사이트를 새로 만들 권한이 없습니다."
           exit 1
+      - name: 공개 웹 파일만 준비
+        run: |
+          mkdir -p _site/assets
+          cp index.html .nojekyll _site/
+          cp assets/* _site/assets/
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: .
+          path: _site
       - id: deployment
         uses: actions/deploy-pages@v4
+
