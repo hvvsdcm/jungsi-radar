@@ -1,5 +1,6 @@
 import { schools, sources, minimumStatus } from './admissions.mjs';
 import { departments, eligibility, calculation, historical, comparison, reading, englishLoss, checkedNumber } from './departments.mjs';
+import { mountBenefits } from './benefits-ui.mjs';
 
 const escape = v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const number = (v,digits=2)=>v===null||v===undefined||!Number.isFinite(v)?'—':Number(v.toFixed(digits)).toLocaleString('ko-KR',{maximumFractionDigits:digits});
@@ -20,9 +21,10 @@ export function mount(root,host={},bootstrap={}) {
   const opened=new Set([...root.querySelectorAll('details[open]')].map(x=>x.querySelector('summary')?.textContent));
   const school=schools.find(x=>x.id===state.school),list=departments.filter(x=>x.school===state.school);
   const d=list.find(x=>x.id===state.dept)??list[0];state.dept=d.id;
-  root.innerHTML=`<div class="rx-workspace"><div class="rx-top"><div><span class="jr-muted">2027 · 서연고 / 서성한</span><h2>추가 기능</h2></div>${btn('잠그기','data-action="lock"')}</div><div class="rx-toolbar">${[['focus','대학 집중분석'],['scores','성적 입력'],['all','학과 한눈에'],['sources','근거']].map(([id,label])=>btn(label,`data-screen="${id}" aria-pressed="${state.screen===id}"`)).join('')}</div><div class="rx-content">${state.screen==='scores'?scoreForm():state.screen==='all'?allDepartments():state.screen==='sources'?evidence():focus(school,d,list)}</div><p class="jr-muted rx-end">입력은 이 탭의 메모리에만 유지됩니다. 잠그기·새로고침 시 추가 입력이 지워집니다.</p></div>`;
+  root.innerHTML=`<div class="rx-workspace"><div class="rx-top"><div><span class="jr-muted">2027 · 서연고 / 서성한</span><h2>추가 기능</h2></div>${btn('잠그기','data-action="lock"')}</div><div class="rx-toolbar">${[['focus','대학 집중분석'],['scores','성적 입력'],['all','학과 한눈에'],['benefits','혜택 찾기'],['sources','근거']].map(([id,label])=>btn(label,`data-screen="${id}" aria-pressed="${state.screen===id}"`)).join('')}</div><div class="rx-content">${state.screen==='benefits'?'<div data-benefits-root></div>':state.screen==='scores'?scoreForm():state.screen==='all'?allDepartments():state.screen==='sources'?evidence():focus(school,d,list)}</div><p class="jr-muted rx-end">입력은 이 탭의 메모리에만 유지됩니다. 잠그기·새로고침 시 추가 입력이 지워집니다.</p></div>`;
   root.querySelectorAll('details').forEach(x=>{if(opened.has(x.querySelector('summary')?.textContent))x.open=true;});
   root.querySelectorAll('[data-screen]').forEach(x=>x.addEventListener('click',()=>{state.screen=x.dataset.screen;render();}));
+  if(state.screen==='benefits'){state.benefits??={};mountBenefits(root.querySelector('[data-benefits-root]'),state.benefits);}
   root.querySelector('[data-action="lock"]').addEventListener('click',()=>{reset();host.lock();});
   root.querySelectorAll('[data-select]').forEach(x=>x.addEventListener('change',()=>{
    const key=x.dataset.select;
