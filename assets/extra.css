@@ -6,7 +6,7 @@
 .rx-toolbar button[aria-pressed="true"]{outline:2px solid var(--seed-color-fg-brand);outline-offset:1px}
 .rx-pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:end;margin:16px 0}
 .rx-field{display:grid;min-width:0;gap:7px;font-size:var(--seed-font-size-t3,.85rem)}
-.rx-field select,.rx-field input{box-sizing:border-box;min-width:0;width:100%;font-size:16px}
+.rx-field select,.rx-field input{box-sizing:border-box;min-width:0;width:100%;font-size:16px;min-height:var(--jr-tap,44px)}
 .rx-field input[aria-invalid="true"]{outline:2px solid var(--seed-color-fg-critical)}
 .rx-verdict{margin:24px 0}
 .rx-verdict h3{font-size:var(--seed-font-size-t7,1.35rem);margin:16px 0 10px}
