@@ -100,11 +100,37 @@
   const TARGET_MARGIN = 0.7;
 
   const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
+  // 판정 한 번에 round 는 수백만 번 불린다 — 10 ** digits 를 매번 계산하지 않고 표에서 집는다.
+  // 0~6자리 밖(음수·큰 값)은 드물어 그대로 계산한다.
+  const POW10 = Object.freeze([1, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6]);
   const round = (value, digits = 1) => {
-    const factor = 10 ** digits;
+    const factor = POW10[digits] ?? 10 ** digits;
     return Math.round(value * factor) / factor;
   };
   const isNumber = (value) => typeof value === 'number' && Number.isFinite(value);
+
+  // 순수 계산 캐시. std·rules·요강 트랙처럼 페이지 수명 동안 **같은 객체**인 입력은 WeakMap 으로 잡는다.
+  // 판정 한 번이 같은 (과목, 백분위) 되읽기를 몇백 번 되풀이해 같은 표를 계속 훑고 있었다.
+  // 돌려주는 값은 얼려 둔다 — 값이 공유되므로 호출자가 고치면 다음 호출이 오염된다(조용한 오답).
+  const NO_ARGS = Symbol('no-args');
+  const memoizeByObject = (compute) => {
+    const cache = new WeakMap();
+    return (key, ...args) => {
+      if (!key || typeof key !== 'object') return compute(key, ...args);
+      let inner = cache.get(key);
+      if (!inner) {
+        inner = new Map();
+        cache.set(key, inner);
+      }
+      // 인자가 0·1개면 문자열을 만들지 않고 그 값을 그대로 열쇠로 쓴다(호출량이 큰 자리다).
+      const id = args.length === 0 ? NO_ARGS : args.length === 1 ? args[0] : args.join('\u0000');
+      if (inner.has(id)) return inner.get(id);
+      const value = compute(key, ...args);
+      inner.set(id, value);
+      return value;
+    };
+  };
+  const freezeList = (list) => Object.freeze(list);
 
   function gradeFromPercentile(pct) {
     if (!isNumber(pct)) return null;
@@ -426,15 +452,15 @@
     return tracks[0];
   }
 
-  const englishTable = (english) => {
+  const englishTable = memoizeByObject((english) => {
     const table = english?.table || {};
     const rows = {};
     for (let grade = 1; grade <= 9; grade += 1) {
       const value = table[String(grade)] ?? table[grade];
       rows[grade] = isNumber(Number(value)) && value !== null && value !== undefined ? Number(value) : null;
     }
-    return rows;
-  };
+    return Object.freeze(rows);
+  });
 
   // 가감점(점)을 백분위 평균 단위로 바꾼다. total = 대학 환산 총점(가감점이 붙는 기준 총점).
   const pointsToPercentile = (points, total) => (isNumber(points) && isNumber(total) && total > 0 ? (points / total) * 100 : 0);
@@ -645,16 +671,17 @@
   const SOCIAL_KEYS = Object.freeze(SOCIAL_SUBJECTS.map((name) => `탐구-${name}`));
   const SCIENCE_KEYS = Object.freeze(SCIENCE_SUBJECTS.map((name) => `탐구-${name}`));
 
-  function stdSubjectKeys(std, target) {
+  const stdSubjectKeys = memoizeByObject((std, target) => {
     const has = (key) => Boolean(std?.subjects?.[key]?.rows?.length);
-    if (!target) return [];
-    if (target === 'social') return SOCIAL_KEYS.filter(has);
-    if (target === 'science') return SCIENCE_KEYS.filter(has);
-    if (target === 'inq' || target === '탐구') return [...SOCIAL_KEYS, ...SCIENCE_KEYS].filter(has);
-    return has(target) ? [target] : [];
-  }
+    if (!target) return freezeList([]);
+    if (target === 'social') return freezeList(SOCIAL_KEYS.filter(has));
+    if (target === 'science') return freezeList(SCIENCE_KEYS.filter(has));
+    if (target === 'inq' || target === '탐구') return freezeList([...SOCIAL_KEYS, ...SCIENCE_KEYS].filter(has));
+    return freezeList(has(target) ? [target] : []);
+  });
 
-  function stdRangeFromPercentile(std, target, pct) {
+  // (과목, 백분위) → 표준점수 구간. 도수분포를 훑는 되읽기라 비싸고, 같은 입력이 판정마다 반복된다.
+  const stdRangeFromPercentile = memoizeByObject((std, target, pct) => {
     const keys = stdSubjectKeys(std, target);
     if (keys.length === 0 || !isNumber(Number(pct))) return null;
     const want = clamp(Math.round(Number(pct)), 0, 100);
@@ -674,7 +701,9 @@
     };
     const hit = scan(want);
     if (hit) {
-      return { min: hit.min, max: hit.max, mid: round((hit.min + hit.max) / 2, 2), pct: want, exact: true, interpolated: false, subjects: hit.subjects };
+      return Object.freeze({
+        min: hit.min, max: hit.max, mid: round((hit.min + hit.max) / 2, 2), pct: want, exact: true, interpolated: false, subjects: freezeList(hit.subjects),
+      });
     }
     for (let radius = 1; radius <= 6; radius += 1) {
       const low = want - radius >= 0 ? scan(want - radius) : null;
@@ -685,10 +714,12 @@
       const subjects = [...new Set([...(low?.subjects || []), ...(high?.subjects || [])])];
       const lo = Math.min(min, max);
       const hi = Math.max(min, max);
-      return { min: lo, max: hi, mid: round((lo + hi) / 2, 2), pct: want, exact: false, interpolated: true, subjects };
+      return Object.freeze({
+        min: lo, max: hi, mid: round((lo + hi) / 2, 2), pct: want, exact: false, interpolated: true, subjects: freezeList(subjects),
+      });
     }
     return null;
-  }
+  });
 
   // ------------------------------------------------- §1.2 산식 채점기
   // 트랙 하나(rules-<year>.json tracks[])를 그대로 계산한다.
@@ -704,11 +735,15 @@
 
   // null 은 '없다'다 — Number(null) 이 0 이라 그냥 Number.isFinite 로 재면 배점 없는 칸이 0으로 변한다
   // (경기대 round:null 이 반올림 자리 0으로 읽혀 소수점이 통째로 날아갔다).
-  const numOr = (value, fallback) => (
-    value === null || value === undefined || value === '' || !Number.isFinite(Number(value)) ? fallback : Number(value)
-  );
+  // 값이 이미 수인 흔한 길은 Number() 를 거치지 않는다 — 이 함수는 판정 한 번에 수백만 번 불린다.
+  const numOr = (value, fallback) => {
+    if (typeof value === 'number') return Number.isFinite(value) ? value : fallback;
+    if (value === null || value === undefined || value === '') return fallback;
+    const number = Number(value);
+    return Number.isFinite(number) ? number : fallback;
+  };
   const truncate = (value, digits) => {
-    const factor = 10 ** digits;
+    const factor = POW10[digits] ?? 10 ** digits;
     return Math.trunc(value * factor) / factor;
   };
 
@@ -779,13 +814,13 @@
   }
 
   // 전국 최고 표준점수 — std-<year>.json subjects[key].maxStd, 없으면 도수분포의 최댓값이다.
-  function maxStdOfSubject(std, subjectKey) {
+  const maxStdOfSubject = memoizeByObject((std, subjectKey) => {
     const subject = std?.subjects?.[subjectKey];
     if (!subject) return null;
     if (isNumber(subject.maxStd)) return subject.maxStd;
     const rows = subject.rows || [];
     return rows.length > 0 ? Math.max(...rows.map((row) => row[0])) : null;
-  }
+  });
   // 탐구는 과목마다 최고점이 다르다. 어디가 행처럼 **과목명을 모르면** 그 종류(사탐/과탐) 안에서
   // 최소~최대 최고점을 분모 후보로 잡는다(§1.3의 "표에 없는 조합은 만들지 않는다"와 같은 태도).
   // 분모가 작을수록 점수가 커지므로 상한(pick 'max')에는 가장 작은 최고점을 쓴다.
@@ -1936,6 +1971,63 @@
     };
   }
 
+  // 산식의 모양(영역·scale)이 2026과 2027에서 같은지. 모집단위마다 되풀이해 문자열로 만들던 것을
+  // 트랙 단위로 한 번만 만든다.
+  const trackShape = memoizeByObject((track) => `${JSON.stringify(track.areas)}${JSON.stringify(track.scale || {})}`);
+
+  // 트랙 하나의 '내 쪽' 계산 — 내 환산점수 · 산식의 국소 기울기 · 영역별 기울기 · 2027 재채점.
+  // 셋 다 **모집단위와 무관**하다(모집단위가 정하는 것은 70% 컷과 그 학생 성적표뿐이다).
+  // 실제로 L1 559곳이 39개 트랙을 나눠 쓰므로, 캐시 없이는 같은 계산을 열네 번씩 되풀이한다.
+  // profile 객체는 판정 한 번 동안 그대로이고 ctx(std·conv·대학·학년도)도 트랙마다 고정이라
+  // (track, 대학, 학년도, 같은 학년도 여부)로 잡으면 충분하다. 돌려주는 묶음은 얼려 공유한다.
+  const l1Cache = new WeakMap();
+  function l1Side(track, profile, std, ctx, sameYear) {
+    let byTrack = l1Cache.get(profile);
+    if (!byTrack) {
+      byTrack = new WeakMap();
+      l1Cache.set(profile, byTrack);
+    }
+    let byKey = byTrack.get(track);
+    if (!byKey) {
+      byKey = new Map();
+      byTrack.set(track, byKey);
+    }
+    const key = `${ctx.universityId}\u0000${ctx.year}\u0000${sameYear}`;
+    const hit = byKey.get(key);
+    if (hit) return hit;
+
+    const inputs = myFormulaInputs(profile, std, { sameYear });
+    const mineScore = formulaScore2(track, inputs, ctx);
+    const planRows = planAreaRows(profile, track);
+    // 산식의 국소 기울기. 위·아래 양쪽을 같은 되읽기 표(tabular)로 재야 차이에 기울기만 남는다.
+    const scoreAtDelta = (delta) => {
+      const one = formulaScore2(track, myFormulaInputs(profile, std, { sameYear, tabular: true, bump: delta }), ctx);
+      return one ? one.value : null;
+    };
+    const slopeInfo = mineScore ? localSlope(scoreAtDelta, planRows.map((row) => row.current)) : null;
+    // 영역별 국소 기울기 — 그 영역 백분위 1점당 환산점수 변화(점). 같은 대칭 차분이다.
+    // 목표 화면의 '필요한 상승'이 이것으로 비중과 영역별 백분위 상승을 만든다 (MODEL §3).
+    // 한 영역만 흔드는 기울기는 2점을 못 넘기는 일이 흔하다 — 여기서는 L1을 접지 않고
+    // 가장 넓은 폭에서 잰 값을 쓴다. 그래도 안 움직이면 그 영역은 이 산식이 반영하지 않는
+    // 것이다(수학 미반영 트랙 등) — 0으로 둔다.
+    const areaSlopes = [];
+    if (mineScore && slopeInfo && slopeInfo.stable) {
+      for (const row of planRows) {
+        const areaAt = (delta) => {
+          const one = formulaScore2(track, myFormulaInputs(profile, std, { sameYear, tabular: true, bump: delta, bumpKey: row.key }), ctx);
+          return one ? one.value : null;
+        };
+        const info = localSlope(areaAt, [row.current]);
+        areaSlopes.push(Object.freeze({ ...row, slope: round(info && info.slope > 0 ? info.slope : 0, 4) }));
+      }
+    }
+    const side = Object.freeze({
+      inputs, mineScore, planRows, slopeInfo, areaSlopes: Object.freeze(areaSlopes),
+    });
+    byKey.set(key, side);
+    return side;
+  }
+
   // 데이터가 허락하는 가장 높은 층위 하나. L1 → L2 순으로 시도하고, 둘 다 안 되면 null(=L3/L0).
   function resolveLayer(profile, university, dept, rule, reference, context) {
     if (!profile || !context || !profileComplete(profile)) return null;
@@ -1963,15 +2055,8 @@
     if (std && track && trackHasFormula(track) && isNumber(score70)
       && formulaVerified(context.formulaCheck, universityId, track.name)) {
       const ctx = { std, conv: context.conv, universityId, year: cutYear };
-      const inputs = myFormulaInputs(profile, std, { sameYear });
-      const mineScore = formulaScore2(track, inputs, ctx);
-      // 산식의 국소 기울기. 위·아래 양쪽을 같은 되읽기 표(tabular)로 재야 차이에 기울기만 남는다.
-      const scoreAtDelta = (delta) => {
-        const one = formulaScore2(track, myFormulaInputs(profile, std, { sameYear, tabular: true, bump: delta }), ctx);
-        return one ? one.value : null;
-      };
-      const planRows = planAreaRows(profile, track);
-      const slopeInfo = mineScore ? localSlope(scoreAtDelta, planRows.map((row) => row.current)) : null;
+      const side = l1Side(track, profile, std, ctx, sameYear);
+      const { inputs, mineScore, slopeInfo, areaSlopes } = side;
       // 기울기를 못 구하거나 불안정하면 점수 차를 백분위로 옮길 수 없다 — L1을 접고 L2·L3로 내려간다.
       if (!slopeInfo || !slopeInfo.stable) {
         if (mineScore && !base.flags.includes('slope-unstable')) base.flags.push('slope-unstable');
@@ -1979,20 +2064,6 @@
         const slope = slopeInfo.slope;
         const toPct = (points) => (isNumber(points) && isNumber(slope) ? round(points / slope, VERDICT_DIGITS) : null);
 
-        // 영역별 국소 기울기 — 그 영역 백분위 1점당 환산점수 변화(점). 같은 대칭 차분이다.
-        // 목표 화면의 '필요한 상승'이 이것으로 비중과 영역별 백분위 상승을 만든다 (MODEL §3).
-        // 한 영역만 흔드는 기울기는 2점을 못 넘기는 일이 흔하다 — 여기서는 L1을 접지 않고
-        // 가장 넓은 폭에서 잰 값을 쓴다. 그래도 안 움직이면 그 영역은 이 산식이 반영하지 않는
-        // 것이다(수학 미반영 트랙 등) — 0으로 둔다.
-        const areaSlopes = [];
-        for (const row of planRows) {
-          const areaAt = (delta) => {
-            const one = formulaScore2(track, myFormulaInputs(profile, std, { sameYear, tabular: true, bump: delta, bumpKey: row.key }), ctx);
-            return one ? one.value : null;
-          };
-          const info = localSlope(areaAt, [row.current]);
-          areaSlopes.push({ ...row, slope: round(info && info.slope > 0 ? info.slope : 0, 4) });
-        }
         const points = round(mineScore.value - score70, 4);
         const flags = [];
         if (!sameYear) flags.push('year-bridge');
@@ -2022,17 +2093,13 @@
         let gap2027 = null;
         let cut2027 = null;
         const track2027 = pickModelTrack(context.rules2027, universityId, dept, context.type);
-        if (track2027 && trackHasFormula(track2027) && JSON.stringify(track2027.areas) + JSON.stringify(track2027.scale || {}) !== JSON.stringify(track.areas) + JSON.stringify(track.scale || {})) {
+        if (track2027 && trackHasFormula(track2027) && trackShape(track2027) !== trackShape(track)) {
           const cutRescored = student70?.consistent ? formulaScore2(track2027, studentFormulaInputs(student70, std), ctx) : null;
-          const mineRescored = formulaScore2(track2027, inputs, ctx);
+          const side2027 = l1Side(track2027, profile, std, ctx, sameYear);
+          const mineRescored = side2027.mineScore;
           if (cutRescored && mineRescored) {
             cut2027 = { score: cutRescored.value, track: track2027.name, status: track2027.status || null };
-            const at2027 = (delta) => {
-              const one = formulaScore2(track2027, myFormulaInputs(profile, std, { sameYear, tabular: true, bump: delta }), ctx);
-              return one ? one.value : null;
-            };
-            const info2027 = localSlope(at2027, planAreaRows(profile, track2027).map((row) => row.current));
-            const slope2027 = info2027 && info2027.stable ? info2027.slope : null;
+            const slope2027 = side2027.slopeInfo && side2027.slopeInfo.stable ? side2027.slopeInfo.slope : null;
             gap2027 = isNumber(slope2027) ? round((mineRescored.value - cutRescored.value) / slope2027, VERDICT_DIGITS) : null;
             const left = bandOf(toPct(points), VERDICT_BANDS);
             const right = bandOf(gap2027, VERDICT_BANDS);
