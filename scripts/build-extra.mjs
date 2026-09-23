@@ -16,7 +16,7 @@ export async function open(payload,password){
  return new TextDecoder().decode(await webcrypto.subtle.decrypt({name:'AES-GCM',iv:Buffer.from(payload.iv,'base64')},key,Buffer.from(payload.data,'base64')));
 }
 export async function bundle(){
- const parts=await Promise.all(['admissions','departments','benefits','benefits-ui','app'].map(name=>readFile(new URL(`../source/extra/${name}.mjs`,import.meta.url),'utf8')));
+ const parts=await Promise.all(['admissions','conversions','departments','benefits','benefits-ui','app'].map(name=>readFile(new URL(`../source/extra/${name}.mjs`,import.meta.url),'utf8')));
  return parts.map(part=>part.replace(/^import .*;\n/gm,'').replace(/^export /gm,'')).join('\n');
 }
 async function main(){

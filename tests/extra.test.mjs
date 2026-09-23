@@ -1,8 +1,9 @@
+import { inquiryConversion, conversionTables } from '../source/extra/conversions.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { departments, calculation, eligibility, historical, reading, comparison, englishLoss } from '../source/extra/departments.mjs';
-import { minimumStatus } from '../source/extra/admissions.mjs';
+import { calculate, minimumStatus } from '../source/extra/admissions.mjs';
 import { seal, open, bundle } from '../scripts/build-extra.mjs';
 
 const state=()=>({pct:{k:94,m:92,t1:85,t2:83,e:2,h:1},std:{k:130,m:128,t1:62,t2:61},converted:{yonsei:[65,64],korea:[66,63],sogang:[64,62]},language:'2',grades:[2,2,3,3],skkuEnglish:95});
@@ -21,29 +22,26 @@ test('SNU social inquiry and language restrictions override any high score',()=>
  assert.equal(eligibility(dept('snu','자유전공학부'),'none').status,'eligible');
  let s=state();s.language='none';assert.equal(calculation(dept('snu','경제학부'),s).value,null);
 });
-test('independent hand calculations for four official equations',()=>{
- const s=state();
- assert.equal(calculation(dept('snu','경제학부'),s).value,381.5); // 130+153.6+98.4-.5
- assert.ok(Math.abs(calculation(dept('yonsei','경영학과'),s).value-688.5875)<1e-8);
- assert.ok(Math.abs(calculation(dept('yonsei','경제학부'),s).value-695.8333333333334)<1e-8);
- assert.ok(Math.abs(calculation(dept('yonsei','전기전자공학부'),s).value-678.3333333333334)<1e-8);
- assert.equal(calculation(dept('korea','경제학과'),s).value,642);
- assert.ok(Math.abs(calculation(dept('korea','컴퓨터학과'),s).value-641.6875)<1e-8);
- assert.equal(calculation(dept('sogang','경제학과'),s).value,494.9);
+test('official Yonsei example automatically looks up percentiles and applies bonus once',()=>{
+ const s=state();s.std={k:131,m:128};s.pct={t1:92,t2:94,e:2,h:3};
+ const r=calculation(dept('yonsei','경영학과'),s);
+ assert.ok(Math.abs(r.value-692.265)<1e-8);
+ assert.deepEqual(r.conversion.values,[64.74,65.66]);
+ s.converted={yonsei:[100,100]};assert.equal(calculation(dept('yonsei','경영학과'),s).value,r.value);
+ s.pct.t1=93;assert.notEqual(calculation(dept('yonsei','경영학과'),s).value,r.value);
+ assert.equal(calculation(dept('snu','경제학부'),state()).value,381.5);
 });
-test('SKKU Na percentile reference, Ga/Da and Hanyang totals stay unavailable',()=>{
- const s=state();assert.equal(calculation(dept('skku','경영학과'),s).value,92);
- assert.equal(calculation(dept('skku','사회과학계열'),s).value,null);
- assert.equal(calculation(dept('skku','반도체융합공학과'),s).value,null);
- assert.equal(calculation(dept('hanyang','경영학부'),s).value,null);
- s.skkuEnglish=null;assert.equal(calculation(dept('skku','경영학과'),s).value,null);
-});
-test('each university keeps separate conversion inputs and never substitutes percentiles',()=>{
- const s=state();s.converted.yonsei=[null,null];
- assert.equal(calculation(dept('yonsei','경영학과'),s).value,null);
- assert.equal(calculation(dept('korea','경제학과'),s).value,642);
+test('automatic tables are complete, separate and never interpolate invalid percentiles',()=>{
+ for(const table of Object.values(conversionTables))assert.equal(Object.keys(table.table).length,101);
+ assert.deepEqual(inquiryConversion('yonsei',{t1:0,t2:100}).values,[31.12,70.12]);
+ assert.deepEqual(inquiryConversion('korea',{t1:0,t2:100}).values,[31.17,70.11]);
+ for(const t1 of [null,undefined,'',-1,101,50.5,NaN])assert.equal(inquiryConversion('yonsei',{t1,t2:90}).values[0],null);
+ const s=state();s.pct.t1=null;assert.equal(calculation(dept('yonsei','경영학과'),s).value,null);
+ assert.ok(calculation(dept('korea','경제학과'),state()).value>0);
  s.std.k=null;assert.equal(calculation(dept('snu','자유전공학부'),s).value,null);
- s.std.k=201;assert.equal(calculation(dept('snu','자유전공학부'),s).value,null);
+});
+test('unverified tables and final totals are held without asking for transformed scores',()=>{
+ for(const [school,name]of [['sogang','경제학과'],['skku','경영학과'],['skku','사회과학계열'],['skku','반도체융합공학과'],['hanyang','경영학부']])assert.equal(calculation(dept(school,name),state()).value,null);
 });
 test('70% comparison is not a probability; pooled Sogang data is labeled',()=>{
  const s=state(),d=dept('sogang','경영학부');assert.match(historical(d).scope,/학과 합격선 아님/);

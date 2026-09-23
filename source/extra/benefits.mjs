@@ -1,6 +1,6 @@
 // Official-source snapshot. Application availability and personal eligibility are separate.
 export const benefitsCheckedAt='2026-09-23';
-export function initialBenefitProfile(){return {region:'인천',district:'검단구',birthYear:2008,types:[]};}
+export function initialBenefitProfile(){return {region:'',district:'',types:[]};}
 export const benefitSources={
  incheonDream:{title:'인천시 · 학교밖청소년지원센터·급식·연락처',url:'https://www.incheon.go.kr/welfare/WE020407'},
  incheonScholar:{title:'인천인재평생교육진흥원 · 학교 밖 꿈드림 장학금',url:'https://itle.or.kr/user/scholarship/service/view.do?sq=737'},

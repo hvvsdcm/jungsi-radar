@@ -1,3 +1,4 @@
+import { inquiryConversion } from './conversions.mjs';
 import { calculate, gradeTables, minimumStatus, yonseiDepartments } from './admissions.mjs';
 
 // 모집요강의 선발 단위와 학과별 상한은 구별한다. 의약·예체능의 별도 평가는 이 모듈 밖이다.
@@ -43,17 +44,18 @@ export function calculation(d,s) {
  if(eligible.status==='blocked') return {...base,missing:[eligible.reason]};
  if(d.school==='skku') {
   if(d.track==='na') {
-   const p=s.pct,E=checkedNumber(s.skkuEnglish,100);
+   const p=s.pct,E=null;
    const valid=['k','m','t1','t2'].every(k=>checkedNumber(p[k],100)!==null);
    const part=valid?.45*Math.max(p.k,p.m)+.30*Math.min(p.k,p.m)+.15*(p.t1+p.t2)/2:null;
-   return {...base,formula:'0.45×max(K%, M%) + 0.30×min(K%, M%) + 0.15×탐구 백분위 평균 + 0.10×영어 변환백분위',value:part!==null&&E!==null?part+.1*E:null,substitution:part===null?'':`${part.toFixed(3)} + 0.10 × ${E??'영어 변환백분위'}`,missing:E===null?['영어 변환백분위']:[],extra:'가중백분위 참고값입니다. 최종 환산점수와 합격선이 아닙니다. 한국사 감점 및 최종 척도는 별도입니다.'};
+   return {...base,formula:'0.45×max(K%, M%) + 0.30×min(K%, M%) + 0.15×탐구 백분위 평균 + 0.10×영어 변환백분위',value:part!==null&&E!==null?part+.1*E:null,substitution:part===null?'':`${part.toFixed(3)} + 0.10 × ${E??'영어 변환백분위'}`,missing:E===null?['2027 영어 변환백분위표 발표 대기 · 직접 입력 불필요']:[],extra:'가중백분위 참고값입니다. 최종 환산점수와 합격선이 아닙니다. 한국사 감점 및 최종 척도는 별도입니다.'};
   }
   return {...base,formula:d.track==='ga'?'국어 15% + 수학·탐구 우수 영역 40% / 나머지 30% + 영어 15%':'국어·수학 우수 영역 35% / 나머지 30% + 탐구 상위 1과목 25% + 영어 10%',missing:['2027 영역별 변환표·세부 산출방법'],extra:'가·다군은 표준점수 구조입니다. 백분위와 표준점수를 섞어 곱하거나 나군 점수를 복사하지 않습니다.'};
  }
  if(d.school==='hanyang')return {...base,formula:d.track==='natural'?'국어 25% + 수학 40% + 영어 10% + 탐구 25%':d.track==='business'?'국어 35% + 수학 35% + 영어 10% + 탐구 20%':'국어 35% + 수학 30% + 영어 10% + 탐구 25%',missing:['수능 후 공지될 세부 산출방법·탐구 변환표','학생부종합평가 점수'],extra:'최종 전형 총점 = 수능 900점 + 학생부종합평가 100점. 내신 등급 하나를 학생부 평가점수로 치환하지 않습니다.'};
- const t=d.school==='snu'?[s.std.t1,s.std.t2]:(s.converted[d.school]??[null,null]);
+ const conversion=d.school==='snu'?null:inquiryConversion(d.school,s.pct);
+ const t=conversion?conversion.values:[s.std.t1,s.std.t2];
  const r=calculate(d.school,d.track,{k:checkedNumber(s.std.k),m:checkedNumber(s.std.m),t1:checkedNumber(t[0],100),t2:checkedNumber(t[1],100),e:s.pct.e,h:s.pct.h,language:/^[1-9]$/.test(String(s.language))?Number(s.language):null});
- return {...r,eligibility:eligible};
+ return {...r,eligibility:eligible,conversion,missing:conversion?[...r.missing.filter(x=>!/^탐구 [12] 점수$/.test(x)), ...conversion.missing]:r.missing,extra:[r.extra,conversion?.note].filter(Boolean).join(' ')};
 }
 
 export function historical(d) {
