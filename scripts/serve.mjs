@@ -1,5 +1,7 @@
 // 점검용 정적 서버. Node 내장 http 만 쓴다 — python3 같은 바깥 실행 파일에 기대지 않는다(윈도우에서도 돈다).
-// serve(root, port) 는 { url, port, close() } 를 돌려준다.
+// serve(root, port, host) 는 { url, port, ready, close() } 를 돌려준다.
+// 기본 바인딩은 127.0.0.1 이다 — 검수(e2e·shots)는 방화벽 대화상자를 띄우면 안 되기 때문이다.
+// 폰에서 열어 보는 개발 서버(scripts/dev.mjs)만 '0.0.0.0' 을 넘긴다.
 import { createServer } from 'node:http';
 import { createReadStream, statSync } from 'node:fs';
 import path from 'node:path';
@@ -15,7 +17,7 @@ const TYPES = {
   '.ico': 'image/x-icon',
 };
 
-export function serve(root, port = 4183) {
+export function serve(root, port = 4183, host = '127.0.0.1') {
   const base = path.resolve(root);
   const server = createServer((request, response) => {
     let pathname = '/';
@@ -34,7 +36,7 @@ export function serve(root, port = 4183) {
     });
     createReadStream(file).pipe(response);
   });
-  server.listen(port, '127.0.0.1');
+  server.listen(port, host);
   const ready = new Promise((resolve, reject) => {
     server.once('listening', resolve);
     server.once('error', reject);
