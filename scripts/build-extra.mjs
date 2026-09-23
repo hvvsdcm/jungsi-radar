@@ -17,7 +17,9 @@ export async function open(payload,password){
 }
 export async function bundle(){
  const parts=await Promise.all(['admissions','conversions','departments','benefits','benefits-ui','app'].map(name=>readFile(new URL(`../source/extra/${name}.mjs`,import.meta.url),'utf8')));
- return parts.map(part=>part.replace(/^import .*;\n/gm,'').replace(/^export /gm,'')).join('\n');
+ // `\r?\n` — a Windows checkout (core.autocrlf) has CRLF, and a bare `\n` would leave the
+ // import statements in the bundle, which then fails to parse inside `Function`.
+ return parts.map(part=>part.replace(/^import .*;\r?\n/gm,'').replace(/^export /gm,'')).join('\n');
 }
 async function main(){
  const password=process.env.RADAR_EXTRA_PASSWORD;
