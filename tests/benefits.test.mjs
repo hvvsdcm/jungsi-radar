@@ -61,3 +61,19 @@ test('keyword and category filters combine; recommended cards retain an explicit
  assert.deepEqual(selectBenefits({}, {query:'전기',category:'요금 감면'},day).map(b=>b.id),['electric']);
  for(const b of benefits.filter(b=>b.recommend))assert.match(b.recommend,/^추천/);
 });
+
+test('Geomdan 2008 preset preserves unknown benefit type and birthday',async()=>{
+ const {initialBenefitProfile}=await import('../source/extra/benefits.mjs');
+ const p=initialBenefitProfile();assert.equal(p.region,'인천');assert.equal(p.district,'검단구');assert.equal(p.birthYear,2008);assert.equal(p.age,undefined);assert.deepEqual(p.types,[]);
+ const rows=selectBenefits(p,{},day),ids=rows.map(b=>b.id);
+ assert.ok(ids.includes('incheonScholar'));assert.ok(ids.includes('incheonWater'));
+ assert.ok(!ids.includes('seoul'));assert.ok(!ids.includes('youthPass'));
+ assert.ok(rows.find(b=>b.id==='food').eligibility.unknown.includes('수급 급여 종류'));
+ assert.ok(rows.find(b=>b.id==='didim').eligibility.unknown.includes('만 나이'));
+ p.types.push('medical');assert.deepEqual(initialBenefitProfile().types,[]);
+});
+test('institution recommendation scholarship closes after official final date',()=>{
+ assert.equal(benefitWindow(item('incheonScholar'),'2026-10-23').code,'open');
+ assert.equal(benefitWindow(item('incheonScholar'),'2026-10-24').code,'closed');
+ assert.equal(benefitEligibility(item('incheonWater'),{region:'서울'}).code,'mismatch');
+});
