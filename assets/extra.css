@@ -37,6 +37,8 @@
 .rx-score-row .rx-field>span:first-child{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
 .rx-check{display:flex;gap:9px;align-items:center;min-height:44px;line-height:1.5;margin:14px 0}
 .rx-source-list{display:flex;flex-direction:column;gap:15px;margin-top:24px}
+/* 근거 링크 줄도 누를 수 있는 것이므로 44px 터치 타깃을 지킨다 (frame.css 와 같은 규칙). 문장 안에 섞인 링크는 그대로 둔다. */
+.rx-source-list a,.rb-sources a,.rx-section>a,.rx-details>a{display:inline-flex;align-items:center;min-height:var(--jr-tap,44px)}
 .rx-end{margin-top:30px;font-size:var(--seed-font-size-t3,.8rem)}
 .rx-lock{padding-block:24px;max-width:380px;margin:0 auto}
 .rx-lock form{margin-top:24px}
