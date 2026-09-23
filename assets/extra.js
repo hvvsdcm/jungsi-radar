@@ -22,11 +22,15 @@
  function draw(root,host) {
   activeRoot=root;root._host=host;
   if(unlocked){unlocked.mount(root,{...host,lock});return;}
-  root.innerHTML=`<div class="rx-lock"><h2>추가 기능</h2><p class="jr-muted">비밀번호를 입력하면 열립니다.</p><form><label class="rx-field"><span>비밀번호</span><span class="seed-text-input__root seed-text-input__root--variant_outline seed-text-input__root--variant_outline-size_medium"><input class="seed-text-input__value seed-text-input__value--variant_outline-size_medium" name="password" aria-label="추가 기능 비밀번호" type="password" required maxlength="64" autocomplete="off"></span></label><div class="rx-toolbar"><button class="${cls}" type="submit">열기</button><button class="${cls}" type="button" data-show aria-label="비밀번호 표시" aria-pressed="false">표시</button></div><p role="alert" class="jr-muted"></p></form></div>`;
+  root.innerHTML=`<div class="rx-lock"><h2>추가 기능</h2><p class="jr-muted">비밀번호를 입력하면 열립니다.</p><form><label class="rx-field"><span>비밀번호</span><span class="seed-text-input__root seed-text-input__root--variant_outline seed-text-input__root--variant_outline-size_medium"><input class="seed-text-input__value seed-text-input__value--variant_outline-size_medium" name="password" aria-label="추가 기능 비밀번호" type="text" inputmode="text" lang="ko" required maxlength="64" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-describedby="rx-password-help"></span></label><div class="rx-toolbar"><button class="${cls}" type="submit">열기</button><button class="${cls}" type="button" data-show aria-label="비밀번호 표시" aria-pressed="true">가리기</button></div><p id="rx-password-help" class="jr-muted">한글 입력을 위해 입력 내용이 표시됩니다. 입력 후 가리기를 누를 수 있어요.</p><p role="alert" class="jr-muted"></p></form></div>`;
   const form=root.querySelector('form'),input=form.elements.password,submit=form.querySelector('[type="submit"]'),error=form.querySelector('[role="alert"]');
   root.querySelector('[data-show]').addEventListener('click',e=>{const show=input.type==='password';input.type=show?'text':'password';e.currentTarget.setAttribute('aria-pressed',String(show));e.currentTarget.textContent=show?'가리기':'표시';});
+  let composing=false;
+  input.addEventListener('compositionstart',()=>{composing=true;});
+  input.addEventListener('compositionend',()=>{composing=false;});
+  input.addEventListener('keydown',e=>{if(e.key==='Enter'&&(e.isComposing||composing||e.keyCode===229))e.preventDefault();});
   form.addEventListener('submit',async e=>{
-   e.preventDefault();if(submit.disabled)return;
+   e.preventDefault();if(composing||submit.disabled)return;
    const ticket=generation;let password=input.value;input.value='';submit.disabled=true;submit.textContent='확인 중';error.textContent='';
    try{const app=await unlock(password);password='';if(ticket!==generation||!root.isConnected)return;unlocked=app;draw(root,host);}
    catch(e){if(root.isConnected){error.textContent=e.message;submit.disabled=false;submit.textContent='열기';input.focus();}}
